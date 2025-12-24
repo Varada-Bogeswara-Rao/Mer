@@ -6,29 +6,32 @@ const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
 
-// 🛡️ x402 Toggle Logic
-const isX402Enabled = process.env.ACTIVATE_X402 === "true";
+// 🛡️ Conditional Wrapper Function
+const x402Guard = (req: Request, res: Response, next: NextFunction) => {
+  // Toggle this in your Railway Variables tab
+  const isEnabled = process.env.ACTIVATE_X402 === "true";
 
-// Helper to wrap the middleware so it can be skipped if disabled
-const conditionalPaymentMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  if (!isX402Enabled) {
-    console.log(`[x402] Paywall skipped: API is currently FREE.`);
+  if (!isEnabled) {
+    console.log("[x402] Mode: 🆓 FREE. Passing request...");
     return next();
   }
 
-  const x402Config = {
-    merchantId: process.env.MERCHANT_ID || "",
-    gatewayUrl: process.env.GATEWAY_URL || "https://cronos-x-402-production.up.railway.app",
-    facilitatorUrl: process.env.FACILITATOR_URL || "https://cronos-x-402-production.up.railway.app",
-    network: (process.env.NETWORK as "cronos-testnet" | "cronos-mainnet") || "cronos-testnet",
+  console.log("[x402] Mode: 💰 PAID. Initiating handshake...");
+  
+  // Your registered Merchant Config
+  const config = {
+    merchantId: "de44364a-760e-40d9-8738-183de877b5b9",
+    gatewayUrl: "https://cronos-x-402-production.up.railway.app",
+    facilitatorUrl: "https://cronos-x-402-production.up.railway.app",
+    network: "cronos-testnet" as const
   };
 
-  // Run the actual x402 logic
-  return paymentMiddleware(x402Config)(req, res, next);
+  // Execute the real middleware
+  return paymentMiddleware(config)(req, res, next);
 };
 
-// 1️⃣ Apply the conditional middleware to your API routes
-app.use("/api", conditionalPaymentMiddleware);
+// Apply to your API routes
+app.use("/api", x402Guard);
 
 // ---------------------------------------------------------
 // ✅ The Endpoint (Free now, Paid later)
@@ -36,15 +39,11 @@ app.use("/api", conditionalPaymentMiddleware);
 app.get("/api/greet", (req: Request, res: Response) => {
   res.json({
     message: "Hello",
-    status: isX402Enabled ? "PAID_ACCESS" : "FREE_ACCESS",
+    access: process.env.ACTIVATE_X402 === "true" ? "Verified Payment" : "Public Access",
     receipt: (req as any).payment || null
   });
 });
 
-// Health check (Public)
-app.get("/health", (req, res) => res.send("OK"));
-
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`Mode: ${isX402Enabled ? "💰 PAID" : "🆓 FREE"}`);
+  console.log(`🚀 Server active on port ${PORT}`);
 });
